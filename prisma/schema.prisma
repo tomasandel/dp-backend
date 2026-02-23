@@ -7,8 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Item {
-  id      Int      @id @default(autoincrement())
-  name    String
-  created DateTime @default(now())
+model Sth {
+  id        Int      @id @default(autoincrement())
+  logId     String   @map("log_id")
+  treeSize  BigInt   @map("tree_size")
+  rootHash  String   @map("root_hash")
+  timestamp BigInt
+  monitorId String   @map("monitor_id")
+  storedAt  DateTime @default(now()) @map("stored_at")
+
+  @@index([logId, storedAt(sort: Desc)])
+  @@index([logId, treeSize])
+  @@map("sths")
 }
