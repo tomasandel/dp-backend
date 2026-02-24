@@ -14,6 +14,14 @@ const options: swaggerJsdoc.Options = {
         description: "Local development server",
       },
     ],
+    components: {
+      securitySchemes: {
+        BearerAuth: {
+          type: "http",
+          scheme: "bearer",
+        },
+      },
+    },
   },
   apis: ["./src/routes/*.ts", "./dist/routes/*.js"],
 };

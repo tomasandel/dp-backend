@@ -82,6 +82,8 @@ const router = Router();
  *     description: Receives a Signed Tree Head collected by a monitor and stores it in the database.
  *     tags:
  *       - STH
+ *     security:
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -97,8 +99,23 @@ const router = Router();
  *               $ref: '#/components/schemas/Sth'
  *       400:
  *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized - invalid or missing API key
  */
 router.post("/", async (req: Request, res: Response) => {
+  const apiKey = process.env.MONITOR_API_KEY;
+  if (!apiKey) {
+    console.error("[STH] MONITOR_API_KEY not configured");
+    res.status(500).json({ error: "MONITOR_API_KEY not configured" });
+    return;
+  }
+  const auth = req.headers.authorization;
+  if (!auth || auth !== `Bearer ${apiKey}`) {
+    console.warn(`[STH] unauthorized POST from ${req.ip}`);
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
   const { log_id, tree_size, root_hash, timestamp, monitor_id } = req.body;
 
   if (!log_id || tree_size == null || !root_hash || timestamp == null || !monitor_id) {
@@ -169,10 +186,12 @@ router.get("/:logId", async (req: Request<{ logId: string }>, res: Response) => 
   });
 
   if (!sth) {
+    console.log(`[STH] GET 404 log=${logId.substring(0, 12)}..`);
     res.status(404).json({ error: "No STH found for this log" });
     return;
   }
 
+  console.log(`[STH] GET 200 log=${logId.substring(0, 12)}.. size=${sth.treeSize}`);
   res.json({
     log_id: sth.logId,
     tree_size: Number(sth.treeSize),
