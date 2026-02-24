@@ -10,12 +10,16 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+if (process.env.NODE_ENV !== "production") {
+  app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
 app.use("/api/healthcheck", healthcheckRouter);
 app.use("/api/sth", sthRouter);
 app.use("/api/stats", statsRouter);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Swagger docs: http://localhost:${PORT}/api/docs`);
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`Swagger docs: http://localhost:${PORT}/api/docs`);
+  }
 });
