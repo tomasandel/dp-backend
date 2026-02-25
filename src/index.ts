@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./swagger";
 import healthcheckRouter from "./routes/healthcheck";
@@ -8,6 +9,7 @@ import statsRouter from "./routes/stats";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(cors());
 app.use(express.json());
 
 if (process.env.NODE_ENV !== "production") {
