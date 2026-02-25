@@ -123,24 +123,29 @@ router.post("/", async (req: Request, res: Response) => {
     return;
   }
 
+  // Normalize log_id to padded base64 (some sources may send unpadded)
+  let normalizedLogId = log_id;
+  const pad = (4 - (normalizedLogId.length % 4)) % 4;
+  if (pad) normalizedLogId += "=".repeat(pad);
+
   // Skip duplicate STH (same log, same tree_size, same root_hash)
   const existing = await prisma.sth.findFirst({
     where: {
-      logId: log_id,
+      logId: normalizedLogId,
       treeSize: BigInt(tree_size),
       rootHash: root_hash,
     },
   });
 
   if (existing) {
-    console.log(`[STH] dup ${monitor_id} log=${log_id.substring(0, 12)}.. size=${tree_size}`);
+    console.log(`[STH] dup ${monitor_id} log=${normalizedLogId.substring(0, 12)}.. size=${tree_size}`);
     res.status(200).json(serializeSth(existing));
     return;
   }
 
   const sth = await prisma.sth.create({
     data: {
-      logId: log_id,
+      logId: normalizedLogId,
       treeSize: BigInt(tree_size),
       rootHash: root_hash,
       timestamp: BigInt(timestamp),
@@ -148,7 +153,7 @@ router.post("/", async (req: Request, res: Response) => {
     },
   });
 
-  console.log(`[STH] new ${monitor_id} log=${log_id.substring(0, 12)}.. size=${tree_size}`);
+  console.log(`[STH] new ${monitor_id} log=${normalizedLogId.substring(0, 12)}.. size=${tree_size}`);
   res.status(201).json(serializeSth(sth));
 });
 
@@ -178,7 +183,10 @@ router.post("/", async (req: Request, res: Response) => {
  *         description: No STH found for this log
  */
 router.get("/:logId", async (req: Request<{ logId: string }>, res: Response) => {
-  const logId = decodeURIComponent(req.params.logId);
+  let logId = decodeURIComponent(req.params.logId);
+  // Normalize to padded base64
+  const getPad = (4 - (logId.length % 4)) % 4;
+  if (getPad) logId += "=".repeat(getPad);
 
   const sth = await prisma.sth.findFirst({
     where: { logId },

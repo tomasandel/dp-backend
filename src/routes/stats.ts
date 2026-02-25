@@ -19,6 +19,7 @@ const router = Router();
  *         description: Comprehensive statistics
  */
 router.get("/", async (_req: Request, res: Response) => {
+  const queryStart = Date.now();
   const now = new Date();
   const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -58,7 +59,7 @@ router.get("/", async (_req: Request, res: Response) => {
   // --- Per-log detailed stats ---
   const logs = await Promise.all(
     logGroups.map(async (group) => {
-      const [latest, oldest, sths24h, monitors] = await Promise.all([
+      const [latest, oldest, sths24h, monitors, uniqueHashes, sths1hAgo] = await Promise.all([
         prisma.sth.findFirst({
           where: { logId: group.logId },
           orderBy: { storedAt: "desc" },
@@ -76,6 +77,13 @@ router.get("/", async (_req: Request, res: Response) => {
           _count: { id: true },
           _max: { storedAt: true },
         }),
+        prisma.sth.groupBy({
+          by: ["rootHash"],
+          where: { logId: group.logId },
+        }),
+        prisma.sth.count({
+          where: { logId: group.logId, storedAt: { gte: oneHourAgo } },
+        }),
       ]);
 
       const minTree = Number(group._min.treeSize ?? 0);
@@ -86,6 +94,21 @@ router.get("/", async (_req: Request, res: Response) => {
       const lastSeenDate = group._max.storedAt;
       const staleness_seconds = lastSeenDate
         ? Math.round((now.getTime() - lastSeenDate.getTime()) / 1000)
+        : null;
+
+      // Growth rate: certs added per hour over observation window
+      const firstSeen = group._min.storedAt;
+      const spanMs = firstSeen && lastSeenDate
+        ? lastSeenDate.getTime() - firstSeen.getTime()
+        : 0;
+      const spanHours = spanMs / (1000 * 60 * 60);
+      const growth_per_hour = spanHours > 0
+        ? Math.round((treeGrowth / spanHours) * 100) / 100
+        : 0;
+
+      // STH freshness: how old is the CT log's own timestamp vs now
+      const sth_freshness_seconds = latest
+        ? Math.round((now.getTime() - Number(latest.timestamp)) / 1000)
         : null;
 
       // Ingestion lag: difference between STH timestamp and stored_at
@@ -108,11 +131,15 @@ router.get("/", async (_req: Request, res: Response) => {
       return {
         log_id: group.logId,
         sth_count: group._count.id,
+        sths_last_1h: sths1hAgo,
         sths_last_24h: sths24h,
         latest_tree_size: latest ? Number(latest.treeSize) : null,
         latest_timestamp: latest ? Number(latest.timestamp) : null,
         oldest_tree_size: oldest ? Number(oldest.treeSize) : null,
         tree_growth_total: treeGrowth,
+        growth_per_hour,
+        unique_root_hashes: uniqueHashes.length,
+        sth_freshness_seconds,
         first_seen: group._min.storedAt,
         last_seen: group._max.storedAt,
         staleness_seconds,
@@ -127,16 +154,25 @@ router.get("/", async (_req: Request, res: Response) => {
     })
   );
 
-  // --- Per-monitor stats ---
-  const monitors = monitorGroups.map((m) => ({
-    monitor_id: m.monitorId,
-    sth_count: m._count.id,
-    first_seen: m._min.storedAt,
-    last_seen: m._max.storedAt,
-    staleness_seconds: m._max.storedAt
-      ? Math.round((now.getTime() - m._max.storedAt.getTime()) / 1000)
-      : null,
-  }));
+  // --- Per-monitor stats with log coverage ---
+  const monitors = await Promise.all(
+    monitorGroups.map(async (m) => {
+      const coveredLogs = await prisma.sth.groupBy({
+        by: ["logId"],
+        where: { monitorId: m.monitorId },
+      });
+      return {
+        monitor_id: m.monitorId,
+        sth_count: m._count.id,
+        log_count: coveredLogs.length,
+        first_seen: m._min.storedAt,
+        last_seen: m._max.storedAt,
+        staleness_seconds: m._max.storedAt
+          ? Math.round((now.getTime() - m._max.storedAt.getTime()) / 1000)
+          : null,
+      };
+    })
+  );
 
   // --- Hourly histogram (last 24h) ---
   const hourlyBuckets: { hour: string; count: number }[] = [];
@@ -240,6 +276,11 @@ router.get("/", async (_req: Request, res: Response) => {
       : 0,
   };
 
+  // --- Database / system stats ---
+  const dbStats = await prisma.$queryRawUnsafe<{ size: string }[]>(
+    `SELECT pg_size_pretty(pg_total_relation_size('sths')) AS size`
+  );
+
   res.json({
     total_sths: totalSths,
     unique_logs: logGroups.length,
@@ -256,6 +297,10 @@ router.get("/", async (_req: Request, res: Response) => {
     logs,
     monitors,
     consistency,
+    system: {
+      db_table_size: dbStats[0]?.size ?? "unknown",
+      query_time_ms: Date.now() - queryStart,
+    },
   });
 });
 
