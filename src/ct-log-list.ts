@@ -5,9 +5,11 @@
  * log_id → human-readable name mapping.
  */
 
+// Demo: merged list (Google's logs + attack simulation logs) served by the CT log server.
+// Production: 'https://www.gstatic.com/ct/log_list/v3/log_list.json'
 const CT_LOG_LIST_URL =
   process.env.CT_LOG_LIST_URL ||
-  "https://www.gstatic.com/ct/log_list/v3/log_list.json";
+  "https://logs.jvgc-a.com/log-list.json";
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
