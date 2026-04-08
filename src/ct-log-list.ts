@@ -48,7 +48,7 @@ async function refreshLogList(): Promise<void> {
       console.error(`[CT Log List] Failed to fetch: HTTP ${res.status}`);
       return;
     }
-    const data: CTLogList = await res.json();
+    const data = (await res.json()) as CTLogList;
     const map = new Map<string, string>();
 
     for (const operator of data.operators) {
