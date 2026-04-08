@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import prisma from "../prisma";
+import { resolveLogNames } from "../ct-log-list";
 
 const router = Router();
 
@@ -55,6 +56,9 @@ router.get("/", async (_req: Request, res: Response) => {
     prisma.sth.findFirst({ orderBy: { storedAt: "asc" } }),
     prisma.sth.findFirst({ orderBy: { storedAt: "desc" } }),
   ]);
+
+  // --- Resolve log names from CT log list ---
+  const logNameMap = await resolveLogNames(logGroups.map((g) => g.logId));
 
   // --- Per-log detailed stats ---
   const logs = await Promise.all(
@@ -130,6 +134,7 @@ router.get("/", async (_req: Request, res: Response) => {
 
       return {
         log_id: group.logId,
+        log_name: logNameMap.get(group.logId) ?? null,
         sth_count: group._count.id,
         sths_last_1h: sths1hAgo,
         sths_last_24h: sths24h,
@@ -247,6 +252,7 @@ router.get("/", async (_req: Request, res: Response) => {
 
       return {
         log_id: group.logId,
+        log_name: logNameMap.get(group.logId) ?? null,
         monitor_count: valid.length,
         consistent: !hasConflict,
         latest_per_monitor: valid,
