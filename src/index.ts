@@ -5,6 +5,7 @@ import { swaggerSpec } from "./swagger";
 import healthcheckRouter from "./routes/healthcheck";
 import sthRouter from "./routes/sth";
 import statsRouter from "./routes/stats";
+import { startSthPurgeJob } from "./jobs/sth-purge";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,4 +25,5 @@ app.listen(PORT, () => {
   if (process.env.NODE_ENV !== "production") {
     console.log(`Swagger docs: http://localhost:${PORT}/api/docs`);
   }
+  startSthPurgeJob();
 });
