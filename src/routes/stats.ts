@@ -207,59 +207,6 @@ router.get("/", async (_req: Request, res: Response) => {
     });
   }
 
-  // --- Cross-monitor consistency per log ---
-  const consistency = await Promise.all(
-    logGroups.map(async (group) => {
-      // Get the latest STH from each monitor for this log
-      const monitorIds = await prisma.sth.groupBy({
-        by: ["monitorId"],
-        where: { logId: group.logId },
-      });
-
-      const latestPerMonitor = await Promise.all(
-        monitorIds.map(async (m) => {
-          const sth = await prisma.sth.findFirst({
-            where: { logId: group.logId, monitorId: m.monitorId },
-            orderBy: { storedAt: "desc" },
-          });
-          return sth
-            ? {
-                monitor_id: sth.monitorId,
-                tree_size: Number(sth.treeSize),
-                root_hash: sth.rootHash,
-                timestamp: Number(sth.timestamp),
-              }
-            : null;
-        })
-      );
-
-      const valid = latestPerMonitor.filter(Boolean) as {
-        monitor_id: string;
-        tree_size: number;
-        root_hash: string;
-        timestamp: number;
-      }[];
-
-      // Check if all monitors agree on the same root_hash for the same tree_size
-      const byTreeSize = new Map<number, Set<string>>();
-      for (const entry of valid) {
-        if (!byTreeSize.has(entry.tree_size)) {
-          byTreeSize.set(entry.tree_size, new Set());
-        }
-        byTreeSize.get(entry.tree_size)!.add(entry.root_hash);
-      }
-      const hasConflict = [...byTreeSize.values()].some((hashes) => hashes.size > 1);
-
-      return {
-        log_id: group.logId,
-        log_name: logNameMap.get(group.logId) ?? null,
-        monitor_count: valid.length,
-        consistent: !hasConflict,
-        latest_per_monitor: valid,
-      };
-    })
-  );
-
   // --- Uptime / data range ---
   const dataRange = {
     oldest_stored_at: oldestSth?.storedAt ?? null,
@@ -302,7 +249,6 @@ router.get("/", async (_req: Request, res: Response) => {
     five_min_histogram: fiveMinBuckets,
     logs,
     monitors,
-    consistency,
     system: {
       db_table_size: dbStats[0]?.size ?? "unknown",
       query_time_ms: Date.now() - queryStart,
