@@ -24,14 +24,11 @@ router.get("/", async (_req: Request, res: Response) => {
   const now = new Date();
   const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
   // --- Parallel batch 1: aggregate counts ---
   const [
     totalSths,
     last1h,
     last24h,
-    lastWeek,
     logGroups,
     monitorGroups,
     oldestSth,
@@ -40,7 +37,6 @@ router.get("/", async (_req: Request, res: Response) => {
     prisma.sth.count(),
     prisma.sth.count({ where: { storedAt: { gte: oneHourAgo } } }),
     prisma.sth.count({ where: { storedAt: { gte: oneDayAgo } } }),
-    prisma.sth.count({ where: { storedAt: { gte: oneWeekAgo } } }),
     prisma.sth.groupBy({
       by: ["logId"],
       _count: { id: true },
@@ -63,7 +59,7 @@ router.get("/", async (_req: Request, res: Response) => {
   // --- Per-log detailed stats ---
   const logs = await Promise.all(
     logGroups.map(async (group) => {
-      const [latest, oldest, sths24h, monitors, uniqueHashes, sths1hAgo] = await Promise.all([
+      const [latest, oldest, sths24h, monitors, sths1hAgo] = await Promise.all([
         prisma.sth.findFirst({
           where: { logId: group.logId },
           orderBy: { storedAt: "desc" },
@@ -80,10 +76,6 @@ router.get("/", async (_req: Request, res: Response) => {
           where: { logId: group.logId },
           _count: { id: true },
           _max: { storedAt: true },
-        }),
-        prisma.sth.groupBy({
-          by: ["rootHash"],
-          where: { logId: group.logId },
         }),
         prisma.sth.count({
           where: { logId: group.logId, storedAt: { gte: oneHourAgo } },
@@ -143,7 +135,6 @@ router.get("/", async (_req: Request, res: Response) => {
         oldest_tree_size: oldest ? Number(oldest.treeSize) : null,
         tree_growth_total: treeGrowth,
         growth_per_hour,
-        unique_root_hashes: uniqueHashes.length,
         sth_freshness_seconds,
         first_seen: group._min.storedAt,
         last_seen: group._max.storedAt,
@@ -243,7 +234,6 @@ router.get("/", async (_req: Request, res: Response) => {
     recent_activity: {
       last_1h: last1h,
       last_24h: last24h,
-      last_7d: lastWeek,
     },
     hourly_histogram: hourlyBuckets,
     five_min_histogram: fiveMinBuckets,
