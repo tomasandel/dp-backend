@@ -12,7 +12,7 @@ const router = Router();
  *     description: >
  *       Returns comprehensive statistics including totals, recent activity,
  *       per-log breakdowns with growth metrics, per-monitor activity,
- *       ingestion lag, hourly histogram, and cross-monitor consistency.
+ *       ingestion lag, hourly histogram, and per-monitor activity.
  *     tags:
  *       - Statistics
  *     responses:
@@ -59,7 +59,7 @@ router.get("/", async (_req: Request, res: Response) => {
   // --- Per-log detailed stats ---
   const logs = await Promise.all(
     logGroups.map(async (group) => {
-      const [latest, oldest, sths24h, monitors, sths1hAgo] = await Promise.all([
+      const [latest, oldest, monitors, sths1hAgo] = await Promise.all([
         prisma.sth.findFirst({
           where: { logId: group.logId },
           orderBy: { storedAt: "desc" },
@@ -67,9 +67,6 @@ router.get("/", async (_req: Request, res: Response) => {
         prisma.sth.findFirst({
           where: { logId: group.logId },
           orderBy: { storedAt: "asc" },
-        }),
-        prisma.sth.count({
-          where: { logId: group.logId, storedAt: { gte: oneDayAgo } },
         }),
         prisma.sth.groupBy({
           by: ["monitorId"],
@@ -102,44 +99,19 @@ router.get("/", async (_req: Request, res: Response) => {
         ? Math.round((treeGrowth / spanHours) * 100) / 100
         : 0;
 
-      // STH freshness: how old is the CT log's own timestamp vs now
-      const sth_freshness_seconds = latest
-        ? Math.round((now.getTime() - Number(latest.timestamp)) / 1000)
-        : null;
-
-      // Ingestion lag: difference between STH timestamp and stored_at
-      let avg_ingestion_lag_ms: number | null = null;
-      if (latest && oldest) {
-        const lags = await prisma.sth.findMany({
-          where: { logId: group.logId },
-          orderBy: { storedAt: "desc" },
-          take: 50,
-          select: { timestamp: true, storedAt: true },
-        });
-        if (lags.length > 0) {
-          const totalLag = lags.reduce((sum, s) => {
-            return sum + (s.storedAt.getTime() - Number(s.timestamp));
-          }, 0);
-          avg_ingestion_lag_ms = Math.round(totalLag / lags.length);
-        }
-      }
-
       return {
         log_id: group.logId,
         log_name: logNameMap.get(group.logId) ?? null,
         sth_count: group._count.id,
         sths_last_1h: sths1hAgo,
-        sths_last_24h: sths24h,
         latest_tree_size: latest ? Number(latest.treeSize) : null,
         latest_timestamp: latest ? Number(latest.timestamp) : null,
         oldest_tree_size: oldest ? Number(oldest.treeSize) : null,
         tree_growth_total: treeGrowth,
         growth_per_hour,
-        sth_freshness_seconds,
         first_seen: group._min.storedAt,
         last_seen: group._max.storedAt,
         staleness_seconds,
-        avg_ingestion_lag_ms,
         monitor_count: monitors.length,
         monitors: monitors.map((m) => ({
           monitor_id: m.monitorId,

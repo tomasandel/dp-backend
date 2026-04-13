@@ -13,11 +13,30 @@ export function startSthPurgeJob() {
 async function purgeStaleSTHs() {
   const cutoff = new Date(Date.now() - PURGE_MAX_AGE_MS);
   try {
+    // Get all distinct log IDs that have STHs
+    const logs = await prisma.sth.groupBy({ by: ["logId"] });
+
+    // For each log, find the newest STH id to keep
+    const keepIds: number[] = [];
+    for (const { logId } of logs) {
+      const newest = await prisma.sth.findFirst({
+        where: { logId },
+        orderBy: { storedAt: "desc" },
+        select: { id: true },
+      });
+      if (newest) keepIds.push(newest.id);
+    }
+
     const result = await prisma.sth.deleteMany({
-      where: { storedAt: { lt: cutoff } },
+      where: {
+        storedAt: { lt: cutoff },
+        ...(keepIds.length > 0 && { id: { notIn: keepIds } }),
+      },
     });
     if (result.count > 0) {
-      console.log(`[Purge] Deleted ${result.count} STHs older than ${cutoff.toISOString()}`);
+      console.log(
+        `[Purge] Deleted ${result.count} STHs older than ${cutoff.toISOString()} (kept ${keepIds.length} newest per log)`
+      );
     }
   } catch (err) {
     console.error("[Purge] Failed to purge stale STHs:", err);
