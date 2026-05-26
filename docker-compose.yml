@@ -1,7 +1,14 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:15-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -17,6 +24,7 @@ services:
   api:
     build: .
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "127.0.0.1:${PORT}:${PORT}"
     environment:
@@ -31,6 +39,7 @@ services:
   adminer:
     image: adminer:latest
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "8080:8080"
     depends_on:
